@@ -26,6 +26,7 @@ import datetime as dt
 import os
 
 from openpyxl import Workbook
+from openpyxl.chart import Reference
 from openpyxl.styles import Alignment
 
 import hsbc_xlsx as hx
@@ -178,6 +179,37 @@ def sheet_construction(wb):
     return ws, len(rows), titles
 
 
+def sheet_betas(wb):
+    rows = load("rate_oil_betas.csv")
+    ws = wb.create_sheet("RateOilBeta")
+    hx.head(ws, "10y rate sensitivity to Brent",
+            "Basis points per one per cent move in Brent, from weekly "
+            "Friday-to-Friday changes since February 2026.", width=6)
+    grid(ws, "Market", ["Sensitivity (bps per % Brent)", "R squared",
+                        "Source", "Identifier"], width=20, first_width=14)
+    for r, row in enumerate(rows, start=R0):
+        ws.cell(row=r, column=1, value=row["label"]).font = hx.F_LBL
+        b = ws.cell(row=r, column=C0,
+                    value=float(row["beta_bps_per_pct_brent"]))
+        b.number_format, b.font = "0.00", hx.F_BODY
+        q = ws.cell(row=r, column=C0 + 1, value=float(row["r_squared"]))
+        q.number_format, q.font = "0.00", hx.F_BODY
+        for j, k in enumerate(["source", "identifier"]):
+            c = ws.cell(row=r, column=C0 + 2 + j, value=row[k])
+            c.font = hx.F_BODY
+    n = len(rows)
+    hx.note(ws, "A%d" % (R0 + n + 2),
+            "Canada, Switzerland and New Zealand are absent because no free "
+            "daily source for their 10y was reachable: the Bank of Canada "
+            "benchmark series has stopped returning observations, the SNB "
+            "bond cube is monthly and ends July 2025, and the RBNZ blocks "
+            "automated requests. They are left out rather than proxied.")
+    ws.merge_cells(start_row=R0 + n + 2, start_column=1,
+                   end_row=R0 + n + 2, end_column=6)
+    ws.row_dimensions[R0 + n + 2].height = 44
+    return ws, n
+
+
 def sheet_charts(wb, refs):
     """All five charts on one sheet, stacked."""
     ws = wb.create_sheet("Charts")
@@ -252,6 +284,13 @@ def sheet_charts(wb, refs):
                    n_points=cn_n, target_labels=10, x_fmt="mmm-yy",
                    y_fmt="+#,##0;-#,##0", y2_fmt="+#,##0;-#,##0",
                    height=10.5, width=21.0)
+
+    bt, bt_n = refs["betas"]
+    vals = Reference(bt, min_col=C0, min_row=R0, max_row=R0 + bt_n - 1)
+    cats = Reference(bt, min_col=1, min_row=R0, max_row=R0 + bt_n - 1)
+    hx.bar_chart(ws, "A120", "10y rate sensitivity to Brent", vals, cats,
+                 height=10.5, width=21.0, fmt="0.00",
+                 series_title="bps per % Brent")
     return ws
 
 
@@ -271,6 +310,9 @@ def sheet_cover(wb):
                        "the start of each."),
         ("5  Construction", "US private non-residential construction: data "
                             "centres against everything else."),
+        ("6  Rate-oil beta", "How far each G10 10y moves for a one per cent "
+                             "move in Brent, on weekly changes since "
+                             "February 2026."),
     ]
     r = 5
     for k, v in rows:
@@ -320,6 +362,12 @@ def sheet_cover(wb):
         "Chart 5 is nominal, which is how this is usually drawn. Columns E-G "
         "of the Construction sheet repeat it in January 2024 prices. Data "
         "centres sit on the right-hand scale.",
+        "Chart 6 is a plain least-squares slope of the weekly change in each "
+        "10y, in basis points, on the weekly per cent change in Brent, "
+        "Friday to Friday. The estimates move materially with the sampling "
+        "day - Britain ranges from 0.83 to 1.11 across Monday, Wednesday and "
+        "Friday sampling - so read the ranking, not the level. R squared per "
+        "market is on the RateOilBeta sheet.",
     ]:
         r = hx.bullet(ws, r, line)
         ws.merge_cells(start_row=r - 1, start_column=1, end_row=r - 1,
@@ -344,11 +392,12 @@ def main():
     refs["continuing"] = sheet_continuing(wb)
     refs["bubbles"] = sheet_bubbles(wb)
     refs["construction"] = sheet_construction(wb)
+    refs["betas"] = sheet_betas(wb)
     sheet_charts(wb, refs)
     sheet_cover(wb)
 
     order = ["Cover", "Charts", "CrossAsset", "Claims", "Continuing",
-             "Bubbles", "Construction"]
+             "Bubbles", "Construction", "RateOilBeta"]
     wb._sheets = [wb[name] for name in order]
     for name in ("Cover", "Charts"):
         wb[name].sheet_properties.tabColor = hx.RED

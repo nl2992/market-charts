@@ -182,6 +182,12 @@ def theme_chart(ch, title=None, legend=True, y_title=None, gridlines=True):
         ch.y_axis.majorGridlines = _hairline_gridlines()
     ch.x_axis.delete = False
     ch.y_axis.delete = False
+    # openpyxl leaves axPos at its default of "l" on both axes, which puts the
+    # category axis down the left-hand side. Excel is forgiving enough to draw
+    # it at the bottom anyway, but the file is wrong and a second value axis
+    # inherits the same default and genuinely does land on the wrong side.
+    ch.x_axis.axPos = "b"
+    ch.y_axis.axPos = "l"
 
     if y_title:
         ch.y_axis.title = y_title
@@ -311,6 +317,10 @@ def combo_chart(ws, anchor, title, primary, secondary, y_title=None,
         c2.series.append(s)
     c2.y_axis.axId = 200
     c2.y_axis.crosses = "max"
+    c2.y_axis.axPos = "r"          # or it stacks on top of the primary scale
+    c2.y_axis.delete = False       # absent reads as "hide me" in some builds
+    c2.y_axis.majorTickMark = "none"
+    c2.y_axis.minorTickMark = "none"
     c2.y_axis.majorGridlines = None
     c2.y_axis.txPr = _txpr(950, False, GREY)
     c2.y_axis.spPr = GraphicalProperties(ln=LineProperties(solidFill=GREY_RULE,

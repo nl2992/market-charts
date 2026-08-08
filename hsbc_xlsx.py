@@ -188,6 +188,11 @@ def theme_chart(ch, title=None, legend=True, y_title=None, gridlines=True):
     # inherits the same default and genuinely does land on the wrong side.
     ch.x_axis.axPos = "b"
     ch.y_axis.axPos = "l"
+    # Category labels go under the plot, not at the axis crossing. Excel's
+    # default puts them where the value axis crosses zero, so on any chart
+    # with negative values they print through the middle of the data.
+    ch.x_axis.tickLblPos = "low"
+    ch.y_axis.tickLblPos = "nextTo"
 
     if y_title:
         ch.y_axis.title = y_title
@@ -288,6 +293,33 @@ def line_chart(ws, anchor, title, series, y_title=None, height=8.6, width=18.0,
     else:
         axis_labels(ch, 1, target=1, x_fmt=x_fmt, y_fmt=y_fmt,
                     y_min=y_min, y_max=y_max)
+    ws.add_chart(ch, anchor)
+    return ch
+
+
+def grouped_bar_chart(ws, anchor, title, series_specs, cat_ref, y_title=None,
+                      height=8.6, width=18.0, fmt="0.00", gap=60, overlap=-10):
+    """Several bars per category, side by side.
+
+    `series_specs` are (values Reference, colour) and the values Reference is
+    expected to start on the header row so the series takes its name from the
+    column heading. `cat_ref` is a formula string, not a Reference — the
+    categories are text, and a Reference here would come back as a numeric
+    cache and print 1, 2, 3 along the axis.
+    """
+    ch = BarChart()
+    ch.type = "col"
+    ch.height, ch.width = height, width
+    ch.gapWidth = gap
+    ch.overlap = overlap
+    for values, colour in series_specs:
+        s = Series(values, title_from_data=True)
+        s.cat = AxDataSource(numRef=NumRef(f=cat_ref))
+        s.graphicalProperties = GraphicalProperties(solidFill=colour)
+        s.graphicalProperties.ln = LineProperties(noFill=True)
+        ch.series.append(s)
+    theme_chart(ch, title=title, legend=True, y_title=y_title)
+    ch.y_axis.number_format = fmt
     ws.add_chart(ch, anchor)
     return ch
 

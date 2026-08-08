@@ -29,6 +29,7 @@ from openpyxl import Workbook
 from openpyxl.chart import Reference
 from openpyxl.styles import Alignment
 
+import build_reference_charts as ref
 import hsbc_xlsx as hx
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -267,23 +268,20 @@ def sheet_charts(wb, refs):
                   target_labels=11, y_fmt="0.0", y_min=-1.5, y_max=3.5,
                   height=10.5, width=21.0)
 
-    # Data centres go on their own right-hand scale, which is how the
-    # sell-side version draws it: the boom is an order of magnitude smaller
-    # than the hole it is being contrasted with, and on one axis it flattens.
+    # One axis, not two. All three series are in $bn, so a second scale buys
+    # nothing and costs a lot: the right-hand axis ran 0 to 45 against a left
+    # axis of -100 to +40, so the two zeros sat at different heights and the
+    # data centre line appeared to start 100bn below the others when in fact
+    # all three start at zero in January 2024. On one scale you see the boom
+    # and the hole open out from the same point, which is the whole story.
     cn, cn_n, titles = refs["construction"]
-    dc = hx.line_series(cn, C0 + 0, R0, cn_n, 1, hx.RED, titles[0] + " (RHS)",
-                        width=26000)
-    lhs = [hx.line_series(cn, C0 + 1, R0, cn_n, 1, hx.BLUE_MID, titles[1],
-                          width=17000),
-           hx.line_series(cn, C0 + 2, R0, cn_n, 1, hx.NAVY, titles[2],
-                          width=20000)]
-    hx.combo_chart(ws, "A97", "Construction spending, change since January 2024",
-                   primary=lhs, secondary=[dc],
-                   y_title="Total and ex data centres, $bn",
-                   y2_title="Data centres, $bn",
-                   n_points=cn_n, target_labels=10, x_fmt="mmm-yy",
-                   y_fmt="+#,##0;-#,##0", y2_fmt="+#,##0;-#,##0",
-                   height=10.5, width=21.0)
+    ser = [hx.line_series(cn, C0 + i, R0, cn_n, 1, c, titles[i],
+                          width=26000 if i == 0 else 17000)
+           for i, c in enumerate([hx.RED, hx.BLUE_MID, hx.NAVY])]
+    hx.line_chart(ws, "A97", "Construction spending, change since January 2024",
+                  ser, y_title="$bn", n_points=cn_n, target_labels=10,
+                  x_fmt="mmm-yy", y_fmt="+#,##0;-#,##0",
+                  y_min=-100, y_max=60, height=10.5, width=21.0)
 
     bt, bt_n = refs["betas"]
     vals = Reference(bt, min_col=C0, min_row=R0, max_row=R0 + bt_n - 1)
@@ -313,6 +311,10 @@ def sheet_cover(wb):
         ("6  Rate-oil beta", "How far each G10 10y moves for a one per cent "
                              "move in Brent, on weekly changes since "
                              "February 2026."),
+        ("7  Priced in 1y", "Policy priced over 12 months, ten markets. "
+                            "Transcribed - no free source exists."),
+        ("8  Beta compare", "Our betas, the published ones, and the gap. "
+                            "Three bars per market."),
     ]
     r = 5
     for k, v in rows:
@@ -368,6 +370,15 @@ def sheet_cover(wb):
         "day - Britain ranges from 0.83 to 1.11 across Monday, Wednesday and "
         "Friday sampling - so read the ranking, not the level. R squared per "
         "market is on the RateOilBeta sheet.",
+        "Charts 7 and 8 carry figures read off third-party research published "
+        "under a no-redistribution notice, and are banded in red on the "
+        "Charts sheet to say so. Charts 1 to 6 are entirely our own. "
+        "Transcribed values are read by eye off bar charts and are accurate "
+        "to about a bar width - do not quote them to two decimals.",
+        "The two sources agree on Sweden, the euro area, and that Japan is "
+        "the least sensitive market. They disagree on the US, where ours is "
+        "roughly double. Across three sampling weekdays and two end dates "
+        "our US beta never fell below 0.48.",
     ]:
         r = hx.bullet(ws, r, line)
         ws.merge_cells(start_row=r - 1, start_column=1, end_row=r - 1,
@@ -393,11 +404,38 @@ def main():
     refs["bubbles"] = sheet_bubbles(wb)
     refs["construction"] = sheet_construction(wb)
     refs["betas"] = sheet_betas(wb)
-    sheet_charts(wb, refs)
+    charts = sheet_charts(wb, refs)
+
+    # The two built on transcribed figures go on the same Charts sheet, under
+    # a banner. Anyone scrolling past row 143 has been told what changed.
+    ref.banner(charts, 143, width=14)
+    # Charts live on the Charts sheet only; a duplicate on each data sheet
+    # made Excel repair the file and silently drop the Cover sheet.
+    ref.sheet_priced(wb, with_chart=False)
+    ref.sheet_compare(wb, ref.load_our_betas(), with_chart=False)
+    priced, compare = wb["PricedIn1y"], wb["BetaCompare"]
+    n_priced, n_cmp = len(ref.PRICED_IN_1Y), len(ref.load_our_betas())
+
+    hx.bar_chart(charts, "A146", "Priced in over 12 months",
+                 Reference(priced, min_col=2, min_row=ref.R0,
+                           max_row=ref.R0 + n_priced - 1),
+                 Reference(priced, min_col=1, min_row=ref.R0,
+                           max_row=ref.R0 + n_priced - 1),
+                 height=10.5, width=21.0, fmt="0", series_title="bps")
+    hx.grouped_bar_chart(
+        charts, "A169",
+        "10y sensitivity to Brent — ours, published, and the gap",
+        [(Reference(compare, min_col=2 + i, min_row=ref.HDR,
+                    max_row=ref.R0 + n_cmp - 1), colour)
+         for i, colour in enumerate((hx.RED, hx.GREY_PALE, hx.NAVY))],
+        "'BetaCompare'!$A$%d:$A$%d" % (ref.R0, ref.R0 + n_cmp - 1),
+        height=10.5, width=21.0, y_title="bps per % Brent")
+
     sheet_cover(wb)
 
     order = ["Cover", "Charts", "CrossAsset", "Claims", "Continuing",
-             "Bubbles", "Construction", "RateOilBeta"]
+             "Bubbles", "Construction", "RateOilBeta", "PricedIn1y",
+             "BetaCompare"]
     wb._sheets = [wb[name] for name in order]
     for name in ("Cover", "Charts"):
         wb[name].sheet_properties.tabColor = hx.RED

@@ -1,8 +1,0 @@
-code,label,beta_bps_per_pct_brent,r_squared,source,identifier
-GB,GB 10y,1.0581,0.5942,riksbank,GBGVB10Y
-AU,AU 10y,0.6802,0.5030,rba,FCMYGBAG10D
-SE,SE 10y,0.6630,0.4589,riksbank,SEGVB10YC
-EU,EU 10y,0.6470,0.4735,riksbank,DEGVB10Y
-US,US 10y,0.6380,0.3950,fred,DGS10
-NO,NO 10y,0.5847,0.3512,riksbank,NOGVB10Y
-JP,JP 10y,0.2036,0.0657,riksbank,JPGVB10Y
